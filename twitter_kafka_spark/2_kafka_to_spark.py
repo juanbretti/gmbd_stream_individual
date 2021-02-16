@@ -22,16 +22,11 @@ def process_rdd(time, rdd, header):
         # Get spark sql singleton context from the current context
         sql_context = get_sql_context_instance(rdd.context)
         # convert the RDD to Row RDD
-        row_rdd = rdd.map(lambda w: Row(term=w[0].decode('utf-8'), term_count=w[1]))
+        row_rdd = rdd.map(lambda w: Row(term=w[0], term_count=w[1]))
         # create a DF from the Row RDD
         df = sql_context.createDataFrame(row_rdd)
-        # Register the dataframe as table
-        # df.registerTempTable("table")
         # get the top 10 terms from the table using SQL and print them
-        # df_query = sql_context.sql("select term, term_count from table order by term_count desc limit 10")
-        # df_query.show()
-        df.show(truncate=False)
-        # print(rdd.take(4))
+        df.orderBy("term_count", ascending=False).show(10)
     except:
         e = sys.exc_info()[0]
         print("Error: %s" % e)
@@ -57,7 +52,7 @@ ssc.checkpoint("checkpoint_TwitterApp")
 # Reading from Kafka stream
 # `streaming-consumer`: Random and generic group name
 dataStream = KafkaUtils.createStream(ssc, KAFKA_ZOOKEEPER_SERVERS, 'streaming-consumer', {KAFKA_TOPIC: 1})
-print(dataStream)
+
 # split each tweet into words
 # TODO: split each tweet into words
 dataStream = dataStream.map(lambda x: x[1].decode('utf-8'))
@@ -71,7 +66,7 @@ hashtags_totals = hashtags.updateStateByKey(aggregate_tags_count)
 words_totals = words.updateStateByKey(aggregate_tags_count)
 
 # do the processing for each RDD generated in each interval
-# hashtags_totals.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Hashtags total"))
+hashtags_totals.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Hashtags total"))
 words_totals.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Words total"))
 
 # # TODO: Instead of computing the top10 elements with Spark SQL, change the code to obtain  the  Top10  words  (not only  hashtags)  using  a  moving  window  of  10 minutes every 30 seconds. Copy & paste the result.
