@@ -3,8 +3,6 @@ from pyspark.streaming import StreamingContext
 from pyspark.sql import Row, SQLContext
 from pyspark.streaming.kafka import KafkaUtils
 import sys
-import json
-import requests
 
 from constants import *
 
@@ -55,24 +53,24 @@ dataStream = KafkaUtils.createStream(ssc, KAFKA_ZOOKEEPER_SERVERS, 'streaming-co
 
 # split each tweet into words
 # TODO: split each tweet into words
-dataStream = dataStream.map(lambda x: x[1].decode('utf-8'))
-splits = dataStream.flatMap(lambda line: line.lower().split(' '))
+dataStream = dataStream.map(lambda x: x[1].decode('utf-8').lower())
+splits = dataStream.flatMap(lambda line: line.split(' '))
+splits = splits.filter(lambda x: x not in ['', '#'])
+# Target terms
 hashtags = splits.filter(lambda w: w.startswith('#')).map(lambda x: (x, 1))
 words = splits.map(lambda x: (x.replace('#', ''), 1))
 
 # adding the count of each hashtag to its last count using updateStateByKey
 # TODO: adding the count of each hashtag to its last count using updateStateByKey
 hashtags_totals = hashtags.updateStateByKey(aggregate_tags_count)
-words_totals = words.updateStateByKey(aggregate_tags_count)
 
 # do the processing for each RDD generated in each interval
 hashtags_totals.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Hashtags total"))
-words_totals.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Words total"))
 
 # # TODO: Instead of computing the top10 elements with Spark SQL, change the code to obtain  the  Top10  words  (not only  hashtags)  using  a  moving  window  of  10 minutes every 30 seconds. Copy & paste the result.
 # # Reference: http://davidiscoding.com/real-time-twitter-analysis-3-tweet-analysis-on-spark
-# words_window = words.reduceByKeyAndWindow(lambda x, y: x + y, lambda x, y: x - y, 10*60) # 10 minutes
-# words_window.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Words window"))
+words_window = words.reduceByKeyAndWindow(lambda x, y: x + y, lambda x, y: x - y, 10*60, 30) # Time in seconds
+words_window.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Words window"))
 
 # start the streaming computation
 ssc.start()
