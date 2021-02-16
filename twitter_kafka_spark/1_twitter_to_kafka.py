@@ -20,15 +20,19 @@ def get_tweets():
 def send_tweets_to_kafka(http_resp, producer, topic):
     for line in http_resp.iter_lines(): 
         try:
+            # JSON load
             full_tweet = json.loads(line)
-            tweet_text = full_tweet['text']
+            # Extraction
+            tweet_text = full_tweet['text'].encode('ascii', 'ignore').decode('ascii').lower().replace('\n', ' ').replace('\t', ' ')
             tweet_screen_mame = full_tweet['user']['screen_name']
             tweet_place = full_tweet['place']['full_name']
             tweet_country = full_tweet['place']['country']
             tweet_lang = full_tweet['lang']
+            # Print
             print("Tweet Text: " + tweet_text)
             print("Message written by {} in {}, {}, in the language {}.".format(tweet_screen_mame, tweet_place, tweet_country, tweet_lang))
             print("-"*20)
+            # Send to Kafka
             producer.send(topic, value=tweet_text)
         except:
             e = sys.exc_info()[0]

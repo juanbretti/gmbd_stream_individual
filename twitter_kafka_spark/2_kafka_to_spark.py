@@ -1,7 +1,9 @@
 from pyspark import SparkConf, SparkContext
 from pyspark.streaming import StreamingContext
 from pyspark.sql import Row, SQLContext
+from pyspark.streaming.kafka import KafkaUtils
 import sys
+import json
 import requests
 
 from constants import *
@@ -20,14 +22,16 @@ def process_rdd(time, rdd, header):
         # Get spark sql singleton context from the current context
         sql_context = get_sql_context_instance(rdd.context)
         # convert the RDD to Row RDD
-        row_rdd = rdd.map(lambda w: Row(term=w[0], term_count=w[1]))
+        row_rdd = rdd.map(lambda w: Row(term=w[0].decode('utf-8'), term_count=w[1]))
         # create a DF from the Row RDD
         df = sql_context.createDataFrame(row_rdd)
         # Register the dataframe as table
-        df.registerTempTable("table")
+        # df.registerTempTable("table")
         # get the top 10 terms from the table using SQL and print them
-        df_query = sql_context.sql("select term, term_count from table order by term_count desc limit 10")
-        df_query.show()
+        # df_query = sql_context.sql("select term, term_count from table order by term_count desc limit 10")
+        # df_query.show()
+        df.show(truncate=False)
+        # print(rdd.take(4))
     except:
         e = sys.exc_info()[0]
         print("Error: %s" % e)
@@ -46,17 +50,20 @@ ssc = StreamingContext(sc, 2)
 
 # setting a checkpoint to allow RDD recovery
 # TODO: setting a checkpoint to allow RDD recovery
-ssc.checkpoint("checkpoint_TwitterApp_JPBM")
+ssc.checkpoint("checkpoint_TwitterApp")
 
 # read data from the port
 # TODO: read data from the port
-dataStream = ssc.socketTextStream(TCP_IP, TCP_PORT)
-
+# Reading from Kafka stream
+# `streaming-consumer`: Random and generic group name
+dataStream = KafkaUtils.createStream(ssc, KAFKA_ZOOKEEPER_SERVERS, 'streaming-consumer', {KAFKA_TOPIC: 1})
+print(dataStream)
 # split each tweet into words
 # TODO: split each tweet into words
-splits = dataStream.flatMap(lambda line: line.lower().split(" "))
-hashtags = splits.filter(lambda w: w.startswith("#")).map(lambda x: (x, 1))
-words = splits.map(lambda x: (x.replace('#', ""), 1))
+dataStream = dataStream.map(lambda x: x[1].decode('utf-8'))
+splits = dataStream.flatMap(lambda line: line.lower().split(' '))
+hashtags = splits.filter(lambda w: w.startswith('#')).map(lambda x: (x, 1))
+words = splits.map(lambda x: (x.replace('#', ''), 1))
 
 # adding the count of each hashtag to its last count using updateStateByKey
 # TODO: adding the count of each hashtag to its last count using updateStateByKey
@@ -64,13 +71,13 @@ hashtags_totals = hashtags.updateStateByKey(aggregate_tags_count)
 words_totals = words.updateStateByKey(aggregate_tags_count)
 
 # do the processing for each RDD generated in each interval
-hashtags_totals.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Hashtags total"))
+# hashtags_totals.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Hashtags total"))
 words_totals.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Words total"))
 
-# TODO: Instead of computing the top10 elements with Spark SQL, change the code to obtain  the  Top10  words  (not only  hashtags)  using  a  moving  window  of  10 minutes every 30 seconds. Copy & paste the result.
-# Reference: http://davidiscoding.com/real-time-twitter-analysis-3-tweet-analysis-on-spark
-words_window = words.reduceByKeyAndWindow(lambda x, y: x + y, lambda x, y: x - y, 10*60) # 10 minutes
-words_window.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Words window"))
+# # TODO: Instead of computing the top10 elements with Spark SQL, change the code to obtain  the  Top10  words  (not only  hashtags)  using  a  moving  window  of  10 minutes every 30 seconds. Copy & paste the result.
+# # Reference: http://davidiscoding.com/real-time-twitter-analysis-3-tweet-analysis-on-spark
+# words_window = words.reduceByKeyAndWindow(lambda x, y: x + y, lambda x, y: x - y, 10*60) # 10 minutes
+# words_window.foreachRDD(lambda time, rdd: process_rdd(time, rdd, "Words window"))
 
 # start the streaming computation
 ssc.start()

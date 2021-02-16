@@ -19,7 +19,7 @@ ssc = StreamingContext(sc, 10)
 
 #Create Kafka Stream to Consume Data Comes From Twitter Topic
 #localhost:2181 = Default Zookeeper Consumer Address
-kafkaStream = KafkaUtils.createStream(ssc, 'localhost:2181', 'raw-event-streaming-consumer', {KAFKA_TOPIC:1})
+kafkaStream = KafkaUtils.createStream(ssc, 'localhost:2181', 'raw-event-streaming-consumer', {KAFKA_TOPIC: 1})
 
 #Count the number of tweets per User
 user_counts = kafkaStream.map(lambda x: x[1].encode('utf-8'))
